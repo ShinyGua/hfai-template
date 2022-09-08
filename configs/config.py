@@ -188,12 +188,11 @@ _C.local_rank = 0
 # Tag of experiment, overwritten by command line argument
 _C.tag = 'test'
 # Distribute BatchNorm stats between nodes after each epoch ("broadcast", "reduce", or "")
-_C.dist_bn='reduce'
+_C.dist_bn = 'reduce'
 
 _C.eval = False
 _C.throughput = False
 _C.amp_opt_level = 'O1'
-
 
 
 def _update_config_from_file(config, cfg_file):
@@ -231,11 +230,10 @@ def update_config(config, args):
     if args.throughput:
         config.throughput = True
 
-    config.local_rank = args.local_rank
-
     config.output = os.path.join(config.output, config.model.name, config.tag)
 
     config.freeze()
+
 
 def get_config(args):
     """Get a yacs CfgNode object with default values."""

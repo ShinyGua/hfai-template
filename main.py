@@ -1,5 +1,5 @@
 import hf_env
-hf_env.set_env('202111')
+hf_env.set_env('diff_hfai')
 
 import argparse
 import datetime
@@ -34,7 +34,7 @@ except ImportError:
 def parse_option():
     parser = argparse.ArgumentParser('pytorch template training and evaluation script', add_help=False)
     parser.add_argument('--cfg', type=str, default="", metavar="FILE", help='path to config file', )
-    parser.add_argument('--batch-size', type=int, default=128, help="batch size for single GPU")
+    parser.add_argument('--batch-size', type=int, default=2, help="batch size for single GPU")
     parser.add_argument('--data-path', type=str, help='path to dataset')
     parser.add_argument('--dataset-name', type=str, help='Dataset type')
     parser.add_argument('--num-classes', type=int, help='Number of label classes')
