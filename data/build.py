@@ -1,45 +1,40 @@
-import os
+import pickle
 
 import numpy as np
-import torch
 import torch.distributed as dist
+from torch.utils.data import DataLoader
 from timm.data import create_transform, Mixup
-from torchvision import datasets
-
+from torch.utils.data.distributed import DistributedSampler
 from .samplers import SubsetRandomSampler
 
 
 def build_loader(config):
-    dsets = {
-        "train": {},
-        "val": {},
-    }
-
-    dset_loaders = {
-        "train": {},
-        "val": {},
-    }
+    dsets = {}
+    dset_loaders = {}
 
     num_tasks = dist.get_world_size()
     global_rank = dist.get_rank()
 
-    traindir = os.path.join(config.data.data_path, 'train')
-    valdir = os.path.join(config.data.data_path, 'val')
+    # traindir = config.data.train_data_path
+    # valdir = config.data.val_data_path
 
-    dsets['train'] = build_dataset(config=config, data_path=traindir, is_train=True)
+    # set the dataset root path
+    data_root_path = config.data.data_root_path
+
+    dsets['train'] = build_dataset(config, is_train=True)
     print(f"local rank {config.local_rank} / global rank {dist.get_rank()} successfully build train dataset")
-    dsets['val'] = build_dataset(config=config, data_path=valdir, is_train=False)
+    dsets['val'] = build_dataset(config, is_train=False)
     print(f"local rank {config.local_rank} / global rank {dist.get_rank()} successfully build val dataset")
 
-    sampler_train = torch.utils.data.DistributedSampler(
+    sampler_train = DistributedSampler(
         dsets['train'], num_replicas=num_tasks, rank=global_rank, shuffle=True
     )
 
     indices = np.arange(dist.get_rank(), len(dsets['val']), dist.get_world_size())
     sampler_val = SubsetRandomSampler(indices)
 
-    dset_loaders['train'] = torch.utils.data.DataLoader(
-        dsets['train'],
+    dset_loaders['train'] = DataLoader(
+        dataset=dsets['train'],
         sampler=sampler_train,
         batch_size=config.model.batch_size,
         num_workers=config.workers,
@@ -48,14 +43,14 @@ def build_loader(config):
         shuffle=False,
     )
 
-    dset_loaders['val'] = torch.utils.data.DataLoader(
-        dsets['val'],
+    dset_loaders['val'] = DataLoader(
+        dataset=dsets['val'],
         sampler=sampler_val,
         batch_size=config.model.batch_size,
         num_workers=config.workers,
         pin_memory=config.pin_mem,
         drop_last=False,
-        shuffle = False,
+        shuffle=False,
     )
 
     mixup_fn = None
@@ -69,9 +64,15 @@ def build_loader(config):
     return dsets, dset_loaders, mixup_fn
 
 
-def build_dataset(config, data_path, is_train=True):
+def build_dataset(config, is_train=True):
     transform = build_transform(config, is_train)
-    dataset = datasets.ImageFolder(data_path, transform)
+    dataset = None
+    if config.data.dataset_name == "CIFAR10":
+        from hfai.datasets import CIFAR10, set_data_dir
+        set_data_dir(config.data.data_root_path)
+        dataset = CIFAR10(split="train", transform=transform)
+    else:
+        assert f"It not supports the dataset {config.data.dataset_name}!"
     return dataset
 
 

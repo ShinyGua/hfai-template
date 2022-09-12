@@ -1,5 +1,5 @@
-import hf_env
-hf_env.set_env('diff_hfai')
+import hfai_env
+hfai_env.set_env('diff_hfai')
 
 import argparse
 import datetime

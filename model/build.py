@@ -13,7 +13,7 @@ def build_model(config):
                              drop_path_rate=config.aug.drop_path,
                              checkpoint_path=checkpoint_path)
         print("=> loaded pre-trained model '{}'".format(checkpoint_path))
-        if model.num_classes:
+        if model.num_classes != model.fc.out_features:
             model.fc = nn.Linear(model.fc.in_features, config.model.num_classes)
     else:
         model = create_model(model_name,

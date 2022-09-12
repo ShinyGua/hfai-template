@@ -12,17 +12,21 @@ _C.base = ['']
 # Data settings
 # -----------------------------------------------------------------------------
 _C.data = CN()
-# path to dataset
-_C.data.data_path = ""
+# path to dataset base
+_C.data.data_root_path = ""
+# path to train dataset
+_C.data.train_data_path = ""
+# path to val dataset
+_C.data.val_data_path = ""
 # dataset type
-_C.data.dataset_name = ""
+_C.data.dataset_name = "ImageNet"
 
 # -----------------------------------------------------------------------------
 # Model settings
 # -----------------------------------------------------------------------------
 _C.model = CN()
 # Name of model to train (default: "resnet50")
-_C.model.name = "resnet50"
+_C.model.name = "resnet18"
 # Start with pretrained version of specified network (if avail)
 _C.model.pretrained = False
 # Initialize model from this checkpoint (default: none)
@@ -32,13 +36,13 @@ _C.model.resume = ""
 # number of label classes (Model default if None)
 _C.model.num_classes = None
 # Image patch size (default: 224)
-_C.model.img_size = 224
+_C.model.img_size = 32
 # Input image center crop percent (for validation only)
 _C.model.crop_pct = 0.825
 # Mean pixel value of dataset
-_C.model.mean = (0.485, 0.456, 0.406)
+_C.model.mean = (0.5, 0.5, 0.5)
 # Std deviation of dataset
-_C.model.std = (0.229, 0.224, 0.225)
+_C.model.std = (0.5, 0.5, 0.5)
 # Input batch size for training (default: 128)
 _C.model.batch_size = 128
 # Validation batch size override (default: None)
@@ -215,8 +219,12 @@ def update_config(config, args):
     # merge from specific arguments
     if args.batch_size:
         config.model.batch_size = args.batch_size
-    if args.data_path:
-        config.data.data_path = args.data_path
+    if args.data_root_path:
+        config.data.data_root_path = args.data_root_path
+    if args.train_data_path:
+        config.data.train_data_path = args.train_data_path
+    if args.val_data_path:
+        config.data.val_data_path = args.val_data_path
     if args.dataset_name:
         config.data.dataset_name = args.dataset_name
     if args.num_classes:

@@ -1,0 +1,16 @@
+data:
+  data_root_path: /home/xiyuwang/code/hfai-template/datasets
+  train_data_path: /home/xiyuwang/code/hfai-template/datasets/ImageNet/train.ffr
+  val_data_path: /home/xiyuwang/code/hfai-template/datasets/ImageNet/val.ffr
+  dataset_name: ImageNet
+
+model:
+  name: resnet18
+  img_size: 224
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  batch_size: 2
+  validation_batch_size: 2
+  num_classes: 1000
+
+workers: 0

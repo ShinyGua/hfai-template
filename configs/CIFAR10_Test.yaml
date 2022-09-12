@@ -1,0 +1,14 @@
+data:
+  data_root_path: /home/xiyuwang/code/hfai-template/datasets
+  dataset_name: CIFAR10
+
+model:
+  name: resnet18
+  img_size: 32
+  mean: [0.5, 0.5, 0.5]
+  std: [0.5, 0.5, 0.5]
+  batch_size: 2
+  validation_batch_size: 2
+  num_classes: 10
+
+workers: 0
