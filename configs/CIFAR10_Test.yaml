@@ -1,5 +1,5 @@
 data:
-  data_root_path: /home/xiyuwang/code/hfai-template/datasets
+  data_root_path: /home/xiyuwang/datasets
   dataset_name: CIFAR10
 
 model:

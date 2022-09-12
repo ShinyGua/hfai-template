@@ -1,4 +1,7 @@
+from pathlib import Path
+
 import hfai_env
+
 hfai_env.set_env('diff_hfai')
 
 import hfai
@@ -17,11 +20,13 @@ from timm.utils import AverageMeter, distribute_bn, accuracy
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
 from torch.multiprocessing import Process
+from hfai.distributed import get_rank
+from hfai.client import receive_suspend_command, go_suspend
 
 from configs.config import get_config
 from data import build_loader
 from model import build_model
-from utils import optimizer_kwargs, create_scheduler, get_grad_norm, reduce_tensor
+from utils import optimizer_kwargs, create_scheduler, get_grad_norm, reduce_tensor, load_checkpoint, save_checkpoint
 from utils.logger import create_logger
 
 try:
@@ -32,6 +37,8 @@ except ImportError:
     amp = None
 
 hfai.client.bind_hf_except_hook(Process)
+
+
 def parse_option():
     parser = argparse.ArgumentParser('pytorch template training and evaluation script', add_help=False)
     parser.add_argument('--cfg', type=str, default="configs/CIFAR10_Test.yaml",
@@ -63,14 +70,14 @@ def main(local_rank):
     # check whether user is installed the amp or not
     if config.amp_opt_level != "O0":
         assert amp is not None, "amp not installed!"
-    os.makedirs(config.output, exist_ok=True)
+    Path(config.output).mkdir(parents=True, exist_ok=True)
 
     # Multi-node communication
     # 多机通信
     ip = os.environ['MASTER_IP']
     port = os.environ['MASTER_PORT']
     hosts = int(os.environ['WORLD_SIZE'])  # number of node 机器个数
-    rank = config.rank = int(os.environ['RANK'])  # rank of current node 当前机器编号
+    rank = int(os.environ['RANK'])  # rank of current node 当前机器编号
     gpus = torch.cuda.device_count()  # Number of GPUs per node 每台机器的GPU个数
 
     # world_size is the number of global GPU, rank is the global index of current GPU
@@ -91,7 +98,7 @@ def main(local_rank):
     logger = create_logger(output_dir=config.output, dist_rank=local_rank, name=f"{config.model.name}")
 
     if dist.get_rank() == 0:
-        path = os.path.join(config.output, "config.json")
+        path = Path(config.output).joinpath("config.json")
         with open(path, "w") as f:
             f.write(config.dump())
         logger.info(config)
@@ -111,6 +118,16 @@ def main(local_rank):
     # 创建优化器
     # build the optimizer
     optimizer = create_optimizer_v2(model, **optimizer_kwargs(config))
+
+    # 学习率调整器
+    # learning rate scheduler
+    lr_scheduler, num_epochs = create_scheduler(config, optimizer)
+
+    max_accuracy = 0.0
+
+    start_epoch = step = 0
+    if config.auto_resume and Path(config.output).joinpath("latest.pt").is_dir():
+        start_epoch, step, max_accuracy = load_checkpoint(config, model, optimizer, lr_scheduler, logger)
 
     # 混合精度以及多卡训练设置
     # Mixed-Precision and distributed training
@@ -142,21 +159,13 @@ def main(local_rank):
     train_loss_fn = train_loss_fn.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-    # 学习率调整器
-    # learning rate scheduler
-    lr_scheduler, num_epochs = create_scheduler(config, optimizer)
-
-    max_accuracy = 0.0
-
-    start_epoch = 0
-    num_epochs = 10
-
     for epoch in range(start_epoch, num_epochs):
         s_time = time.time()
         dset_loaders["train"].sampler.set_epoch(epoch)
 
         train_one_epoch(epoch, model, dset_loaders, optimizer, train_loss_fn,
-                        config, lr_scheduler, logger, mixup_fn)
+                        config, lr_scheduler, logger, mixup_fn, max_accuracy, step)
+        step = 0
 
         distribute_bn(model, dist.get_world_size(), config.dist_bn == 'reduce')
 
@@ -166,12 +175,14 @@ def main(local_rank):
         e_time = time.time() - s_time
         logger.info(f' * Acc@1 {acc1:.3f} Acc@5 {acc5:.3f} Max accuracy {max_accuracy:.3f}')
 
+        if config.local_rank == 0 and (epoch % config.save_freq == 0 or epoch == (num_epochs - 1)):
+            save_checkpoint(config, model.module, optimizer, lr_scheduler, epoch + 1, step, max_accuracy, logger)
 
     print("Done!")
 
 
 def train_one_epoch(epoch, model, dset_loaders, optimizer, loss_fn,
-                    config, lr_scheduler, logger, mixup_fn=None):
+                    config, lr_scheduler, logger, mixup_fn=None, max_accuracy=0.0, start_step=0):
     model.train()
     optimizer.zero_grad()
 
@@ -189,6 +200,16 @@ def train_one_epoch(epoch, model, dset_loaders, optimizer, loss_fn,
     end = time.time()
 
     for idx, (samples, targets) in enumerate(data_loader):
+        # 获取当前节点序号。在0号节点的0号进程上接收集群调度信息
+        if hfai.distributed.get_rank() == 0 and config.local_rank == 0:
+            if receive_suspend_command():
+                # 挂起
+                print("成功接受信号")
+                save_checkpoint(config, model.module, optimizer, lr_scheduler, epoch, idx, max_accuracy, logger)
+                go_suspend()
+
+        if idx < start_step:
+            continue
         # measure data loading time
         data_time.update(time.time() - end)
 

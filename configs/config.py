@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import yaml
 from yacs.config import CfgNode as CN
@@ -193,6 +194,8 @@ _C.local_rank = 0
 _C.tag = 'test'
 # Distribute BatchNorm stats between nodes after each epoch ("broadcast", "reduce", or "")
 _C.dist_bn = 'reduce'
+# Auto resume from latest checkpoint
+_C.auto_resume = True
 
 _C.eval = False
 _C.throughput = False
@@ -238,8 +241,8 @@ def update_config(config, args):
     if args.throughput:
         config.throughput = True
 
-    config.output = os.path.join(config.output, config.model.name, config.tag)
-
+    config.output = Path(config.output).joinpath(config.model.name).joinpath(config.tag).__str__()
+    config.local_rank = int(os.environ['RANK'])
     config.freeze()
 
 
