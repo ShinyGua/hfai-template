@@ -55,29 +55,39 @@ def parse_option():
 
 
 def main(local_rank):
+    # 超参数导入
+    # load hyperparameter
     _, config = parse_option()
+
+    # 检查是否安装amp
+    # check whether user is installed the amp or not
     if config.amp_opt_level != "O0":
         assert amp is not None, "amp not installed!"
     os.makedirs(config.output, exist_ok=True)
 
     # Multi-node communication
+    # 多机通信
     ip = os.environ['MASTER_IP']
     port = os.environ['MASTER_PORT']
-    hosts = int(os.environ['WORLD_SIZE'])  # number of node
-    rank = int(os.environ['RANK'])  # rank of current node
-    gpus = torch.cuda.device_count()  # Number of GPUs per node
+    hosts = int(os.environ['WORLD_SIZE'])  # number of node 机器个数
+    rank = config.rank = int(os.environ['RANK'])  # rank of current node 当前机器编号
+    gpus = torch.cuda.device_count()  # Number of GPUs per node 每台机器的GPU个数
 
+    # world_size is the number of global GPU, rank is the global index of current GPU
+    # world_size是全局GPU个数，rank是当前GPU全局编号
     dist.init_process_group(backend='nccl', init_method=f'tcp://{ip}:{port}', world_size=hosts * gpus,
                             rank=rank * gpus + local_rank)
     torch.cuda.set_device(local_rank)
 
     # fix the random seed
+    # 设置随机种子
     seed = config.seed + local_rank
     torch.manual_seed(seed)
     np.random.seed(seed)
     cudnn.benchmark = True
 
     # create the logger
+    # 建立logger
     logger = create_logger(output_dir=config.output, dist_rank=local_rank, name=f"{config.model.name}")
 
     if dist.get_rank() == 0:
@@ -87,15 +97,23 @@ def main(local_rank):
         logger.info(config)
         logger.info(f"Full config saved to {path}")
 
+    # 创建 datasets, dataset_loars以及mixup
+    # build datasets, dataset_loars and mixup
     dsets, dset_loaders, mixup_fn = build_loader(config)
 
+    # 创建模型
+    # build the model
     model = build_model(config)
     model.cuda()
-    # if dist.get_rank() == 0:
-    #     logger.info(str(model))
+    if dist.get_rank() == 0:
+        logger.info(str(model))
 
+    # 创建优化器
+    # build the optimizer
     optimizer = create_optimizer_v2(model, **optimizer_kwargs(config))
 
+    # 混合精度以及多卡训练设置
+    # Mixed-Precision and distributed training
     if config.amp_opt_level != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.amp_opt_level)
         # Apex DDP preferred unless native amp is activated
@@ -108,6 +126,8 @@ def main(local_rank):
         logger.info("Using native Torch DistributedDataParallel.")
     model_without_ddp = model.module
 
+    # 损失函数
+    # loss function
     if config.aug.mixup > 0.:
         # smoothing is handled with mixup target transform which outputs sparse, soft targets
         if config.aug.bce_loss:
@@ -122,7 +142,8 @@ def main(local_rank):
     train_loss_fn = train_loss_fn.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
-    # 加载
+    # 学习率调整器
+    # learning rate scheduler
     lr_scheduler, num_epochs = create_scheduler(config, optimizer)
 
     max_accuracy = 0.0
