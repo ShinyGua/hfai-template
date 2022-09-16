@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import hfai_env
-
 hfai_env.set_env('diff_hfai')
 
 import hfai
@@ -66,6 +65,7 @@ def main(local_rank):
     # load hyperparameter
     _, config = parse_option()
 
+    
     # 检查是否安装amp
     # check whether user is installed the amp or not
     if config.amp_opt_level != "O0":
@@ -79,6 +79,9 @@ def main(local_rank):
     hosts = int(os.environ['WORLD_SIZE'])  # number of node 机器个数
     rank = int(os.environ['RANK'])  # rank of current node 当前机器编号
     gpus = torch.cuda.device_count()  # Number of GPUs per node 每台机器的GPU个数
+    config.defrost()
+    config.local_rank = local_rank
+    config.freeze()
 
     # world_size is the number of global GPU, rank is the global index of current GPU
     # world_size是全局GPU个数，rank是当前GPU全局编号

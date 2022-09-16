@@ -242,7 +242,6 @@ def update_config(config, args):
         config.throughput = True
 
     config.output = Path(config.output).joinpath(config.model.name).joinpath(config.tag).__str__()
-    config.local_rank = int(os.environ['RANK'])
     config.freeze()
 
 
